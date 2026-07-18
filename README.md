@@ -97,9 +97,9 @@ Aynı grupta 2 departman: iki kez `/departmantanimla`, personeli **doğru depart
 - Kaynak: `GET /reports/conversations` (+ performance süreleri)
 - Personel listesi varsa yalnızca o kişiler (paylaşılan API ayrımı)
 - Ring-only aramalar da aktivite sayılır (olumlu politika)
-- Saatlik: aynı gün aynı personel+ihlal tipi bir kez
-- `/rapor`: o ana kadarki tüm ihlaller
-- Departmanlar sırayla işlenir (paralel değil)
+- **Saatlik (11:00–19:00):** her departman grubuna **tam rapor** (ihlal varsa listeler, yoksa “ihlal yok”; personel çağrı adedi + konuşma süresi)
+- `/rapor`: aynı içerik, manuel
+- Departmanlar sırayla işlenir (~30 sn ara, paralel değil)
 
 ## Lokal çalıştırma
 

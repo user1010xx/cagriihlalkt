@@ -33,10 +33,10 @@ async def run_scheduler(application: Application) -> None:
 
 
 async def send_scheduled_reports(application: Application) -> None:
-    """Saatlik: yalnizca YENI ihlalleri (ve 0 cagri alarmi) gruba gonderir.
+    """Saatlik tam rapor: ihlal olsun olmasin her departman grubuna gonderir.
 
-    Ayni gun ayni personel+ihlal tipi bir kez bildirilir; basarili gonderimden
-    sonra isaretlenir. Manuel /rapor tum ihlalleri gosterir (suppress yok).
+    Rapor icerigi: ozet (ihlal var/yok), ihlal listesi (varsa), personel cagri adedi ve sure.
+    Departmanlar sirayla islenir; arada DEPARTMENT_REPORT_DELAY_SECONDS beklenir.
     """
     config: Config = application.bot_data["config"]
     database: Database = application.bot_data["database"]
@@ -56,35 +56,38 @@ async def send_scheduled_reports(application: Application) -> None:
 
     departments = database.list_departments(only_active=True)
     delay = config.department_report_delay_seconds
+    logger.info(
+        "Saatlik tam rapor basliyor: %s departman, delay=%ss",
+        len(departments),
+        delay,
+    )
+
     for index, department in enumerate(departments):
         report = None
+        messages: list[str] = []
         try:
-            if database.is_department_weekly_leave(department.id, now.weekday(), now.date().isoformat()):
-                logger.info("Departman haftalik izinli, atlandi: %s", department.name)
-                continue
             if not department.api_key:
                 logger.info("API key yok, atlandi: %s", department.name)
                 continue
             if not database.get_rules(department.id).is_configured:
                 logger.info("Kurallar tanimli degil, atlandi: %s", department.name)
                 continue
+
+            # suppress_notified=False -> tam rapor (tum ihlaller + personel ozet)
             report = await generate_department_report_payload(
                 database,
                 client,
                 department.id,
                 now.date(),
                 now,
-                suppress_notified=True,
+                suppress_notified=False,
                 use_cache=True,
             )
-            if not report.should_send:
-                logger.info("Gonderilecek yeni ihlal yok: %s", department.name)
-                continue
             chat_id = report.chat_id
             messages = [report.message, *report.extra_messages]
         except Exception as exc:
             chat_id = department.telegram_chat_id
-            messages = [f"❌ {department.name} zamanlanmis raporu alinamadi: {exc}"]
+            messages = [f"❌ {department.name} saatlik raporu alınamadı: {exc}"]
             report = None
             logger.exception("Departman raporu hatasi: %s", department.name)
 
@@ -92,11 +95,7 @@ async def send_scheduled_reports(application: Application) -> None:
             for message in messages:
                 for part in split_telegram_message(message):
                     await _send_message_with_retry(application, chat_id, part)
-            # Basarili gonderimden sonra isaretle (basarisizsa ayni ihlal tekrar denenir)
-            if report is not None and report.notification_violations:
-                database.mark_notified_violations(
-                    department.id, now.date().isoformat(), report.notification_violations
-                )
+            logger.info("Saatlik rapor gonderildi: %s -> %s", department.name, chat_id)
         except Exception:
             logger.exception("Zamanlanmis rapor gonderilemedi: %s", department.name)
 

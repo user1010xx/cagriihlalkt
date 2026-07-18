@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-"""Saatlik bildirimde ayni gun ayni personel+ihlal TIPI bir kez gider.
+"""Ihlal tipi anahtari (metin normalizasyonu).
 
-Ornek: 13:00 Ahmet 'cagri arasi bekleme' bildirildi -> 14:00 ayni tip tekrar gitmez.
-Manuel /rapor suppress etmez; o ana kadarki tum ihlalleri listeler.
+Saatlik rapor artik tam rapor gonderir (ihlal var/yok + personel ozet);
+suppress_notified ile filtreleme varsayilan olarak kullanilmaz.
 """
 
 VIOLATION_KEY_PREFIXES: tuple[tuple[str, str], ...] = (

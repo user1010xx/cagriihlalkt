@@ -35,3 +35,21 @@ def test_seconds_until_next_hour():
     cfg = _cfg()
     seconds = _seconds_until_next_run(cfg)
     assert 1.0 <= seconds <= 3600.0
+
+
+def test_full_report_mode_always_should_send():
+    """suppress_notified=False iken (saatlik tam rapor) her zaman gonder."""
+    from bot.service import _should_send_report
+
+    assert _should_send_report(
+        suppress_notified=False,
+        notification_violations=(),
+        raw_call_count=10,
+        processed_call_count=10,
+    ) is True
+    assert _should_send_report(
+        suppress_notified=False,
+        notification_violations=(),
+        raw_call_count=0,
+        processed_call_count=0,
+    ) is True

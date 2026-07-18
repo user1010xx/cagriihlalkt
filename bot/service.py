@@ -62,9 +62,10 @@ async def generate_department_report_payload(
     if database.is_department_weekly_leave(department.id, report_date.weekday(), report_date.isoformat()):
         message = (
             f"🟨 {department.name} için bugün haftalık departman izin günü.\n"
-            "Otomatik saatlik rapor gönderilmez. Manuel /rapor da bu gün atlandı."
+            "Saatlik kural kontrolü bu gün atlanır (izin)."
         )
-        return DepartmentReport(department.telegram_chat_id, message, (), False, department.id, department.name)
+        # Saatlik turda yine gruba bilgi gitsin
+        return DepartmentReport(department.telegram_chat_id, message, (), True, department.id, department.name)
 
     personnel = database.list_personnel(department.id)
     raw_calls, meta = await _fetch_conversations_cached(
@@ -90,8 +91,8 @@ async def generate_department_report_payload(
             client, department.api_key, report_date, evaluations, personnel, use_cache=use_cache
         )
 
-    # Saatlik (suppress_notified=True): ayni gun once bildirilen ihlal tipi tekrar gitmez.
-    # Manuel /rapor (suppress_notified=False): o ana kadarki TUM ihlaller listelenir.
+    # suppress_notified=True: eski davranis (yalnizca yeni ihlal) — artik saatlikte kullanilmiyor.
+    # suppress_notified=False: TUM ihlaller + personel adet/sure (saatlik ve /rapor).
     notified_violations = (
         database.list_notified_violations(department.id, report_date.isoformat()) if suppress_notified else set()
     )
@@ -180,8 +181,10 @@ def _should_send_report(
     processed_call_count: int,
     has_extra: bool = False,
 ) -> bool:
+    # Tam rapor modu (saatlik + /rapor): her zaman gonder
     if not suppress_notified:
         return True
+    # Eski "yalnizca yeni ihlal" modu (artik varsayilan degil)
     if notification_violations:
         return True
     if raw_call_count == 0:
