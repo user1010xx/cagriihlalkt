@@ -67,7 +67,7 @@ TONIVA_FORCE_IPV4=1
 
 ```
 /departmantanimla   → ad + API key
-/kuralayarla        → mesai / gap / mola (boş = kapalı)
+/kuralayarla        → önce departman adı, sonra mesai / gap / mola (boş = kapalı)
 /personelekle       → önce departman adı sorulur
 /personeltopluekle  → önce departman adı, sonra xlsx
 /sorumluekle        → opsiyonel

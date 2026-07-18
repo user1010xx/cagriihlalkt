@@ -88,7 +88,7 @@ Gruptaki herkes yetkilidir.
 /apitanimla — mevcut departmana API key güncelle
 /departman_listele /departman_sil /departman_aktif /departman_pasif
 
-⚙️ Kurallar
+⚙️ Kurallar (önce departman adı — aynı grupta 2 departman için)
 /kuralayarla — adım adım (uygulanmayacak kural için: boş)
 /kurallistele
 
@@ -173,7 +173,9 @@ async def departmantanimla_start(update: Update, context: ContextTypes.DEFAULT_T
     await update.effective_message.reply_text(
         "Departman adını yazın.\n"
         "Aynı grupta birden fazla departman olabilir (paylaşılan API senaryosu).\n"
-        "İptal: /iptal"
+        "İptal: /iptal\n\n"
+        "💡 Grupta bot düz metni almayabilir: bu mesaja YANITLAYARAK yazın "
+        "(veya BotFather → /setprivacy → Disable)."
     )
     return DEPT_ADD_NAME
 
@@ -336,14 +338,10 @@ async def kuralayarla_start(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     if not depts:
         await update.effective_message.reply_text("Önce departman tanımlayın.")
         return ConversationHandler.END
-    if len(depts) == 1:
-        context.user_data["rule_dept"] = depts[0].name
-        await update.effective_message.reply_text(
-            "Mesai başlangıç saati (HH:MM). Uygulanmayacaksa: boş"
-        )
-        return RULE_WORK_START
+    # Her zaman departman sor (ayni grupta 2 departman / farkli kurallar)
     await update.effective_message.reply_text(
-        "Hangi departman için kural?\n" + "\n".join(f"• {d.name}" for d in depts)
+        _dept_pick_prompt(depts, "Kural ayarlama")
+        + "\n\n💡 Grupta bot düz metni almayabilir: bu mesaja YANITLAYARAK yazın."
     )
     return RULE_DEPT
 
@@ -351,11 +349,20 @@ async def kuralayarla_start(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 @allowed_only
 async def kuralayarla_dept(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     name = (update.effective_message.text or "").strip()
-    if resolve_department(update, _db(context), name) is None:
-        await update.effective_message.reply_text("Departman bulunamadı.")
-        return ConversationHandler.END
-    context.user_data["rule_dept"] = name
-    await update.effective_message.reply_text("Mesai başlangıç saati (HH:MM) veya boş:")
+    department = resolve_department(update, _db(context), name)
+    if department is None:
+        depts = departments_in_chat(update, _db(context))
+        await update.effective_message.reply_text(
+            "Bu grupta böyle bir departman yok. Tekrar yazın (yanıt olarak).\n"
+            + "\n".join(f"• {d.name}" for d in depts)
+        )
+        return RULE_DEPT
+    context.user_data["rule_dept"] = department.name
+    await update.effective_message.reply_text(
+        f"Departman: {department.name}\n"
+        "Mesai başlangıç saati (HH:MM). Uygulanmayacaksa: boş\n"
+        "💡 Yanıtlayarak yazın."
+    )
     return RULE_WORK_START
 
 
