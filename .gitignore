@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Secrets & local env
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+_start_bot.ps1
+start_bot.local.ps1
+
+# Runtime data
+data/*
+!data/.gitkeep
+*.sqlite3
+*.sqlite3-*
+bot_run.log
+*.log
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Local docs / dumps (not for repo)
+api_docs_extracted.txt
+toniva_openapi.json
+_parse_openapi.py
+img*.png
+Ekran*.png
+*.docx
+apı documents.docx
+"api documents.docx"
