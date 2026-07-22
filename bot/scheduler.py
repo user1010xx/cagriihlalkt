@@ -65,7 +65,16 @@ async def send_scheduled_reports(application: Application) -> None:
     for index, department in enumerate(departments):
         report = None
         messages: list[str] = []
+        chat_id = department.telegram_chat_id
         try:
+            # Haftalık izin: kontrol + gruba mesaj yok (service should_send=False)
+            if database.is_department_weekly_leave(
+                department.id, now.date().weekday(), now.date().isoformat()
+            ):
+                logger.info("Haftalik izin, sessiz atlandi: %s", department.name)
+                if index < len(departments) - 1 and delay > 0:
+                    await asyncio.sleep(delay)
+                continue
             if not department.api_key:
                 logger.info("API key yok, atlandi: %s", department.name)
                 continue
@@ -83,13 +92,27 @@ async def send_scheduled_reports(application: Application) -> None:
                 suppress_notified=False,
                 use_cache=True,
             )
+            if not report.should_send:
+                logger.info(
+                    "Rapor gonderilmedi (should_send=False): %s",
+                    department.name,
+                )
+                if index < len(departments) - 1 and delay > 0:
+                    await asyncio.sleep(delay)
+                continue
             chat_id = report.chat_id
             messages = [report.message, *report.extra_messages]
+            messages = [m for m in messages if m and m.strip()]
         except Exception as exc:
             chat_id = department.telegram_chat_id
             messages = [f"❌ {department.name} saatlik raporu alınamadı: {exc}"]
             report = None
             logger.exception("Departman raporu hatasi: %s", department.name)
+
+        if not messages:
+            if index < len(departments) - 1 and delay > 0:
+                await asyncio.sleep(delay)
+            continue
 
         try:
             for message in messages:

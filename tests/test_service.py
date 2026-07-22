@@ -108,3 +108,77 @@ async def test_missing_api_key(tmp_path):
     now = datetime(2026, 7, 18, 12, 0, tzinfo=TZ)
     with pytest.raises(ValueError, match="API"):
         await generate_department_report_payload(db, client, d.id, date(2026, 7, 18), now)
+
+
+@pytest.mark.asyncio
+async def test_weekly_leave_skips_control_and_does_not_send(tmp_path):
+    """Haftalık izin günü: API çağrısı yok, mesaj yok, should_send=False."""
+    clear_api_call_cache()
+    db = Database(str(tmp_path / "weekly.sqlite3"))
+    d = db.add_department("Dis As Ekip1", "-100", "tva_key")
+    db.update_rules(
+        d.id,
+        work_start_time="09:00",
+        pre_break_leave_time=None,
+        break_start_time=None,
+        break_end_time=None,
+        post_break_start_time=None,
+        work_end_time="18:00",
+        max_call_gap_minutes=60,
+    )
+    # 2026-07-18 Cumartesi (weekday=5)
+    db.add_department_weekly_leave(d.id, 5)
+    client = FakeClient(
+        [{"agentName": "Ali", "extension": "1", "startedAt": "2026-07-18T09:05:00", "duration": 90}]
+    )
+    now = datetime(2026, 7, 18, 14, 0, tzinfo=TZ)
+
+    report = await generate_department_report_payload(
+        db, client, d.id, date(2026, 7, 18), now
+    )
+
+    assert report.should_send is False
+    assert report.message == ""
+    assert report.extra_messages == ()
+    assert client.calls == 0  # Toniva'ya gidilmez
+    assert "izin" not in report.message.casefold()  # gruba izin uyarısı yok
+
+
+@pytest.mark.asyncio
+async def test_weekly_leave_only_affects_that_department(tmp_path):
+    """Aynı gruptaki iki departmandan yalnızca izinli olan atlanır."""
+    clear_api_call_cache()
+    db = Database(str(tmp_path / "weekly2.sqlite3"))
+    leave_dept = db.add_department("Dis As Ekip1", "-100", "tva_a")
+    active_dept = db.add_department("Dis As Ekip2", "-100", "tva_b")
+    for dept in (leave_dept, active_dept):
+        db.update_rules(
+            dept.id,
+            work_start_time="09:00",
+            pre_break_leave_time=None,
+            break_start_time=None,
+            break_end_time=None,
+            post_break_start_time=None,
+            work_end_time="18:00",
+            max_call_gap_minutes=60,
+        )
+        db.add_personnel(dept.id, "Ali", "1")
+    # Cumartesi yalnızca Ekip1 izinli
+    db.add_department_weekly_leave(leave_dept.id, 5)
+    client = FakeClient(
+        [{"agentName": "Ali", "extension": "1", "startedAt": "2026-07-18T09:05:00", "duration": 90}]
+    )
+    now = datetime(2026, 7, 18, 14, 0, tzinfo=TZ)
+
+    leave_report = await generate_department_report_payload(
+        db, client, leave_dept.id, date(2026, 7, 18), now
+    )
+    active_report = await generate_department_report_payload(
+        db, client, active_dept.id, date(2026, 7, 18), now
+    )
+
+    assert leave_report.should_send is False
+    assert leave_report.message == ""
+    assert active_report.should_send is True
+    assert "Dis As Ekip2" in active_report.message
+    assert client.calls == 1  # yalnızca aktif departman

@@ -97,8 +97,10 @@ Aynı grupta 2 departman: iki kez `/departmantanimla`, personeli **doğru depart
 - Kaynak: `GET /reports/conversations` (+ performance süreleri)
 - Personel listesi varsa yalnızca o kişiler (paylaşılan API ayrımı)
 - Ring-only aramalar da aktivite sayılır (olumlu politika)
-- **Saatlik (11:00–19:00):** her departman grubuna **tam rapor** (ihlal varsa listeler, yoksa “ihlal yok”; personel çağrı adedi + konuşma süresi)
-- `/rapor`: aynı içerik, manuel
+- **Saatlik (11:00–19:00):** her **aktif ve izinli olmayan** departman grubuna **tam rapor** (ihlal varsa listeler, yoksa “ihlal yok”; personel çağrı adedi + konuşma süresi)
+- **Haftalık departman izni:** o gün o departman için kontrol yapılmaz, gruba ileti **gönderilmez** (sessiz atlanır). Aynı grupta 2 departman varsa yalnızca izin girilen departman atlanır.
+- `/haftalikizin`: önce **departman adı**, sonra gün (aynı grupta 2 departman ayrımı)
+- `/rapor`: aynı içerik, manuel (izin günü kısa bilgi: kontrol yok)
 - Departmanlar sırayla işlenir (~30 sn ara, paralel değil)
 
 ## Lokal çalıştırma

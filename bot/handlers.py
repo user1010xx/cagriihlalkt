@@ -99,6 +99,7 @@ Gruptaki herkes yetkilidir.
 🟨 İzin
 /izin /iziniptal /izinlistele
 /haftalikizin /haftalikizinduzenle /haftalikiziniptal
+  (önce departman adı — aynı grupta 2 departman ayrımı; izin günü o departmana rapor yok)
 
 👥 Sorumlu
 /sorumluekle /sorumlusil /sorumlulistele
@@ -852,41 +853,52 @@ async def izinlistele(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 # --- Haftalik izin ---
 
 
+def _weekly_dept_prompt(depts: list) -> str:
+    """Aynı grupta birden fazla departman olabileceği için her zaman ad sorulur."""
+    lines = [
+        "Hangi departman için haftalık izin? (önce departman adı)",
+        "",
+        "Bu gruptaki departmanlar:",
+    ]
+    lines.extend(f"• {d.name}" for d in depts)
+    return "\n".join(lines)
+
+
 @allowed_only
 async def haftalikizin_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    context.user_data.pop("weekly_mode", None)
     depts = departments_in_chat(update, _db(context))
     if not depts:
         await update.effective_message.reply_text("Departman yok.")
         return ConversationHandler.END
-    if len(depts) == 1:
-        context.user_data["weekly_dept"] = depts[0].name
-        await update.effective_message.reply_text(
-            "Haftalık izin günü (pazartesi...pazar veya 0-6):"
-        )
-        return WEEKLY_DAY
-    await update.effective_message.reply_text(
-        "Hangi departman?\n" + "\n".join(f"• {d.name}" for d in depts)
-    )
+    # Tek departman olsa bile ad sorulur — hangi departmana izin girdiği net olsun.
+    await update.effective_message.reply_text(_weekly_dept_prompt(depts))
     return WEEKLY_DEPT
 
 
 @allowed_only
 async def haftalikizin_dept(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     name = (update.effective_message.text or "").strip()
-    if resolve_department(update, _db(context), name) is None:
-        await update.effective_message.reply_text("Departman yok.")
-        return ConversationHandler.END
-    context.user_data["weekly_dept"] = name
+    dept = resolve_department(update, _db(context), name)
+    if dept is None:
+        await update.effective_message.reply_text(
+            "Bu grupta böyle bir departman yok. Adı tekrar yazın veya /iptal."
+        )
+        return WEEKLY_DEPT
+    context.user_data["weekly_dept"] = dept.name
     action = context.user_data.get("weekly_mode")
     if action == "edit":
-        dept = resolve_department(update, _db(context), name)
         rows = _db(context).list_department_weekly_leaves(dept.id)
         days = ", ".join(WEEKDAY_NAMES[int(r["weekday"])] for r in rows) or "(yok)"
         await update.effective_message.reply_text(
-            f"Mevcut günler: {days}\nYeni gün eklemek için gün adı yazın veya 'tümünü kaldır':"
+            f"🏢 {dept.name}\nMevcut günler: {days}\n"
+            "Yeni gün eklemek için gün adı yazın veya 'tümünü kaldır':"
         )
         return WEEKLY_EDIT_ACTION
-    await update.effective_message.reply_text("Haftalık izin günü (pazartesi...pazar veya 0-6):")
+    await update.effective_message.reply_text(
+        f"🏢 {dept.name} için haftalık izin günü yazın\n"
+        "(pazartesi...pazar veya 0-6):"
+    )
     return WEEKLY_DAY
 
 
@@ -894,12 +906,18 @@ async def haftalikizin_dept(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 async def haftalikizin_day(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     day = _parse_weekday(update.effective_message.text or "")
     if day is None:
-        await update.effective_message.reply_text("Geçersiz gün.")
+        await update.effective_message.reply_text("Geçersiz gün. Örn: pazartesi veya 0")
         return WEEKLY_DAY
     name = context.user_data.get("weekly_dept")
+    if not name:
+        await update.effective_message.reply_text("Departman seçilmedi. /haftalikizin ile yeniden başlayın.")
+        return ConversationHandler.END
     _db(context).add_department_weekly_leave(name, day)
     context.user_data.clear()
-    await update.effective_message.reply_text(f"✅ Haftalık izin eklendi: {WEEKDAY_NAMES[day]}")
+    await update.effective_message.reply_text(
+        f"✅ Haftalık izin eklendi\n🏢 {name} → {WEEKDAY_NAMES[day]}\n"
+        "Bu gün o departman için kontrol ve gruba rapor yapılmaz."
+    )
     return ConversationHandler.END
 
 
@@ -910,17 +928,7 @@ async def haftalikizinduzenle_start(update: Update, context: ContextTypes.DEFAUL
     if not depts:
         await update.effective_message.reply_text("Departman yok.")
         return ConversationHandler.END
-    if len(depts) == 1:
-        context.user_data["weekly_dept"] = depts[0].name
-        rows = _db(context).list_department_weekly_leaves(depts[0].id)
-        days = ", ".join(WEEKDAY_NAMES[int(r["weekday"])] for r in rows) or "(yok)"
-        await update.effective_message.reply_text(
-            f"Mevcut günler: {days}\nYeni gün ekleyin veya 'tümünü kaldır':"
-        )
-        return WEEKLY_EDIT_ACTION
-    await update.effective_message.reply_text(
-        "Hangi departman?\n" + "\n".join(f"• {d.name}" for d in depts)
-    )
+    await update.effective_message.reply_text(_weekly_dept_prompt(depts))
     return WEEKLY_DEPT
 
 
@@ -928,9 +936,12 @@ async def haftalikizinduzenle_start(update: Update, context: ContextTypes.DEFAUL
 async def haftalikizinduzenle_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     text = (update.effective_message.text or "").strip()
     name = context.user_data.get("weekly_dept")
+    if not name:
+        await update.effective_message.reply_text("Departman seçilmedi. /haftalikizinduzenle ile yeniden başlayın.")
+        return ConversationHandler.END
     if text.casefold() in {"tümünü kaldır", "tumunu kaldir", "temizle", "hepsini sil"}:
         _db(context).delete_department_weekly_leave(name)
-        await update.effective_message.reply_text("✅ Tüm haftalık izinler kaldırıldı.")
+        await update.effective_message.reply_text(f"✅ {name}: tüm haftalık izinler kaldırıldı.")
         context.user_data.clear()
         return ConversationHandler.END
     day = _parse_weekday(text)
@@ -939,7 +950,7 @@ async def haftalikizinduzenle_action(update: Update, context: ContextTypes.DEFAU
         return WEEKLY_EDIT_ACTION
     _db(context).add_department_weekly_leave(name, day)
     context.user_data.clear()
-    await update.effective_message.reply_text(f"✅ Eklendi: {WEEKDAY_NAMES[day]}")
+    await update.effective_message.reply_text(f"✅ {name} → eklendi: {WEEKDAY_NAMES[day]}")
     return ConversationHandler.END
 
 
@@ -949,26 +960,25 @@ async def haftalikiziniptal_start(update: Update, context: ContextTypes.DEFAULT_
     if not depts:
         await update.effective_message.reply_text("Departman yok.")
         return ConversationHandler.END
-    if len(depts) == 1:
-        context.user_data["weekly_dept"] = depts[0].name
-        await update.effective_message.reply_text(
-            "Bugün için haftalık izni iptal etmek için 'bugün' yazın, veya gün adı:"
-        )
-        return WEEKLY_CANCEL_DAY
-    await update.effective_message.reply_text(
-        "Hangi departman?\n" + "\n".join(f"• {d.name}" for d in depts)
-    )
+    await update.effective_message.reply_text(_weekly_dept_prompt(depts))
     return WEEKLY_CANCEL_DEPT
 
 
 @allowed_only
 async def haftalikiziniptal_dept(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     name = (update.effective_message.text or "").strip()
-    if resolve_department(update, _db(context), name) is None:
-        await update.effective_message.reply_text("Departman yok.")
-        return ConversationHandler.END
-    context.user_data["weekly_dept"] = name
-    await update.effective_message.reply_text("'bugün' veya silinecek gün adı (kalıcı silme):")
+    dept = resolve_department(update, _db(context), name)
+    if dept is None:
+        await update.effective_message.reply_text(
+            "Bu grupta böyle bir departman yok. Adı tekrar yazın veya /iptal."
+        )
+        return WEEKLY_CANCEL_DEPT
+    context.user_data["weekly_dept"] = dept.name
+    await update.effective_message.reply_text(
+        f"🏢 {dept.name}\n"
+        "Bugün için tek seferlik iptal: 'bugün'\n"
+        "Kalıcı gün silme: gün adı (pazartesi...)"
+    )
     return WEEKLY_CANCEL_DAY
 
 
@@ -976,17 +986,22 @@ async def haftalikiziniptal_dept(update: Update, context: ContextTypes.DEFAULT_T
 async def haftalikiziniptal_day(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     text = (update.effective_message.text or "").strip().casefold()
     name = context.user_data.get("weekly_dept")
+    if not name:
+        await update.effective_message.reply_text("Departman seçilmedi. /haftalikiziniptal ile yeniden başlayın.")
+        return ConversationHandler.END
     if text in {"bugun", "bugün", "today"}:
         leave_date = _now(context).date().isoformat()
         _db(context).cancel_department_weekly_leave(name, leave_date)
-        await update.effective_message.reply_text(f"✅ Bugünün haftalık izni iptal: {leave_date}")
+        await update.effective_message.reply_text(
+            f"✅ {name}: bugünün haftalık izni iptal ({leave_date}) — bugün kontrol yapılır."
+        )
     else:
         day = _parse_weekday(text)
         if day is None:
-            await update.effective_message.reply_text("Geçersiz.")
+            await update.effective_message.reply_text("Geçersiz. 'bugün' veya gün adı yazın.")
             return WEEKLY_CANCEL_DAY
         _db(context).delete_department_weekly_leave(name, day)
-        await update.effective_message.reply_text(f"✅ Kaldırıldı: {WEEKDAY_NAMES[day]}")
+        await update.effective_message.reply_text(f"✅ {name}: kaldırıldı → {WEEKDAY_NAMES[day]}")
     context.user_data.clear()
     return ConversationHandler.END
 
@@ -1135,12 +1150,20 @@ async def _run_report(update: Update, context: ContextTypes.DEFAULT_TYPE, suppre
                 now,
                 suppress_notified=suppress_notified,
             )
+            # Haftalık izin: kontrol yok; kullanıcı komut verdiği için tek satır bilgi
+            if not report.should_send:
+                await update.effective_message.reply_text(
+                    f"🟨 {department.name}: bugün haftalık izin — kontrol yapılmadı, rapor yok."
+                )
+                continue
             from bot.reporting import split_telegram_message
 
             for part in split_telegram_message(report.message):
-                await update.effective_message.reply_text(part)
+                if part.strip():
+                    await update.effective_message.reply_text(part)
             for extra in report.extra_messages:
                 for part in split_telegram_message(extra):
-                    await update.effective_message.reply_text(part)
+                    if part.strip():
+                        await update.effective_message.reply_text(part)
         except Exception as exc:
             await update.effective_message.reply_text(f"❌ {department.name}: {exc}")

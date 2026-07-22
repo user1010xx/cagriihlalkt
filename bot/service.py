@@ -54,18 +54,21 @@ async def generate_department_report_payload(
     department = database.get_department(department_identifier)
     if department is None:
         raise ValueError("Departman bulunamadi.")
+    # Haftalık departman izni: o gün kontrol yok, gruba ileti yok (scheduler sessiz atlar).
+    if database.is_department_weekly_leave(department.id, report_date.weekday(), report_date.isoformat()):
+        return DepartmentReport(
+            department.telegram_chat_id,
+            "",
+            (),
+            False,
+            department.id,
+            department.name,
+        )
     if not department.api_key:
         raise ValueError("Departman API anahtari tanimli degil. /apitanimla veya /departmantanimla kullanin.")
     rules = database.get_rules(department.id)
     if not rules.is_configured:
         raise ValueError("Departman kurallari tanimli degil. Once /kuralayarla ile kurallari giriniz.")
-    if database.is_department_weekly_leave(department.id, report_date.weekday(), report_date.isoformat()):
-        message = (
-            f"🟨 {department.name} için bugün haftalık departman izin günü.\n"
-            "Saatlik kural kontrolü bu gün atlanır (izin)."
-        )
-        # Saatlik turda yine gruba bilgi gitsin
-        return DepartmentReport(department.telegram_chat_id, message, (), True, department.id, department.name)
 
     personnel = database.list_personnel(department.id)
     raw_calls, meta = await _fetch_conversations_cached(
