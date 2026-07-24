@@ -2,8 +2,8 @@ from __future__ import annotations
 
 """Ihlal tipi anahtari (metin normalizasyonu).
 
-Saatlik rapor artik tam rapor gonderir (ihlal var/yok + personel ozet);
-suppress_notified ile filtreleme varsayilan olarak kullanilmaz.
+Saatlik rapor suppress_notified=True ile calisir: ayni gun ayni personel+ihlal tipi
+bir kez bildirilir (notified_violations). /rapor tum ihlalleri gosterir.
 """
 
 VIOLATION_KEY_PREFIXES: tuple[tuple[str, str], ...] = (

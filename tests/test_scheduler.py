@@ -37,8 +37,8 @@ def test_seconds_until_next_hour():
     assert 1.0 <= seconds <= 3600.0
 
 
-def test_full_report_mode_always_should_send():
-    """suppress_notified=False iken (saatlik tam rapor) her zaman gonder."""
+def test_manual_report_mode_always_should_send():
+    """suppress_notified=False (/rapor): her zaman gonder."""
     from bot.service import _should_send_report
 
     assert _should_send_report(
@@ -49,6 +49,33 @@ def test_full_report_mode_always_should_send():
     ) is True
     assert _should_send_report(
         suppress_notified=False,
+        notification_violations=(),
+        raw_call_count=0,
+        processed_call_count=0,
+    ) is True
+
+
+def test_hourly_mode_only_sends_on_new_or_alarm():
+    """suppress_notified=True (saatlik): yeni ihlal yoksa sessiz; alarm durumlari gonder."""
+    from bot.service import _should_send_report
+
+    # Once bildirilmis ihlaller var, yeni yok -> gonderme
+    assert _should_send_report(
+        suppress_notified=True,
+        notification_violations=(),
+        raw_call_count=10,
+        processed_call_count=10,
+    ) is False
+    # Yeni ihlal var
+    assert _should_send_report(
+        suppress_notified=True,
+        notification_violations=(("ahmet", "çağrı arası bekleme ihlali"),),
+        raw_call_count=10,
+        processed_call_count=10,
+    ) is True
+    # API 0 kayit alarmi
+    assert _should_send_report(
+        suppress_notified=True,
         notification_violations=(),
         raw_call_count=0,
         processed_call_count=0,

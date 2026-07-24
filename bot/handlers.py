@@ -105,8 +105,9 @@ Gruptaki herkes yetkilidir.
 /sorumluekle /sorumlusil /sorumlulistele
 
 📊 Rapor
-/rapor [departman]
+/rapor [departman] — o ana kadarki TÜM ihlaller
 /kontroltoniva [departman]
+(Saatlik otomatik rapor yalnızca yeni ihlalleri iletir; tekrar etmez)
 
 ℹ️ /chat_id /kimim /iptal /help
 

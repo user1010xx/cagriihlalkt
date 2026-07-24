@@ -94,8 +94,8 @@ async def generate_department_report_payload(
             client, department.api_key, report_date, evaluations, personnel, use_cache=use_cache
         )
 
-    # suppress_notified=True: eski davranis (yalnizca yeni ihlal) — artik saatlikte kullanilmiyor.
-    # suppress_notified=False: TUM ihlaller + personel adet/sure (saatlik ve /rapor).
+    # suppress_notified=True: saatlik — yalnizca henuz bildirilmemis ihlaller.
+    # suppress_notified=False: /rapor — o ana kadarki TUM ihlaller.
     notified_violations = (
         database.list_notified_violations(department.id, report_date.isoformat()) if suppress_notified else set()
     )
@@ -184,10 +184,11 @@ def _should_send_report(
     processed_call_count: int,
     has_extra: bool = False,
 ) -> bool:
-    # Tam rapor modu (saatlik + /rapor): her zaman gonder
+    # /rapor: her zaman gonder (tum ihlaller)
     if not suppress_notified:
         return True
-    # Eski "yalnizca yeni ihlal" modu (artik varsayilan degil)
+    # Saatlik: yalnizca yeni ihlal varsa gonder; yoksa sessiz.
+    # Alarm/uyari durumlari (0 kayit, islenemeyen veri, ciddi eksik cekim) yine gonderilir.
     if notification_violations:
         return True
     if raw_call_count == 0:

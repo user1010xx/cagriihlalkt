@@ -145,6 +145,69 @@ async def test_weekly_leave_skips_control_and_does_not_send(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_hourly_suppresses_already_notified_violation(tmp_path):
+    """Saatlik (suppress_notified=True): once bildirilen ihlal tekrarlanmaz."""
+    clear_api_call_cache()
+    db = Database(str(tmp_path / "notif.sqlite3"))
+    d = db.add_department("Dept", "-100", "tva_key")
+    db.update_rules(
+        d.id,
+        work_start_time="09:00",
+        pre_break_leave_time=None,
+        break_start_time=None,
+        break_end_time=None,
+        post_break_start_time=None,
+        work_end_time="18:00",
+        max_call_gap_minutes=30,
+    )
+    db.add_personnel(d.id, "Ahmet", "10")
+    # 09:00 ve 12:30 arasinda uzun bosluk -> cagri arasi ihlal
+    rows = [
+        {
+            "agentName": "Ahmet",
+            "extension": "10",
+            "startedAt": "2026-07-18T09:00:00",
+            "duration": 60,
+        },
+        {
+            "agentName": "Ahmet",
+            "extension": "10",
+            "startedAt": "2026-07-18T12:30:00",
+            "duration": 60,
+        },
+    ]
+    client = FakeClient(rows)
+    now = datetime(2026, 7, 18, 13, 0, tzinfo=TZ)
+
+    first = await generate_department_report_payload(
+        db, client, d.id, date(2026, 7, 18), now, suppress_notified=True
+    )
+    assert first.should_send is True
+    assert first.notification_violations
+    assert "Ahmet" in first.message
+    assert "ihlal" in first.message.casefold()
+
+    db.mark_notified_violations(
+        d.id, date(2026, 7, 18).isoformat(), first.notification_violations
+    )
+
+    # Ayni kontrol aninda ikinci saatlik: once bildirilen tekrarlanmaz, mesaj yok
+    second = await generate_department_report_payload(
+        db, client, d.id, date(2026, 7, 18), now, suppress_notified=True
+    )
+    assert second.should_send is False
+    assert second.notification_violations == ()
+
+    # /rapor: tum ihlaller yine gorunur
+    full = await generate_department_report_payload(
+        db, client, d.id, date(2026, 7, 18), now, suppress_notified=False
+    )
+    assert full.should_send is True
+    assert "Ahmet" in full.message
+    assert "ihlal" in full.message.casefold()
+
+
+@pytest.mark.asyncio
 async def test_weekly_leave_only_affects_that_department(tmp_path):
     """Aynı gruptaki iki departmandan yalnızca izinli olan atlanır."""
     clear_api_call_cache()
