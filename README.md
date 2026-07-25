@@ -14,7 +14,7 @@ Toniva Public API üzerinden çağrı raporu alır, departman kurallarına göre
 
 - Özel sohbette bot **yanıt vermez**
 - Yetkili gruptaki **herkes** komut kullanabilir
-- **11:00–19:00** her saat başı aktif departmanlar **sırayla** kontrol edilir (~30 sn ara)
+- **10:00–19:00** her saat başı aktif departmanlar **sırayla** kontrol edilir (~30 sn ara); rapor ihlal olsun/olmasın gruba gider
 
 ## Railway Environment Variables
 
@@ -28,7 +28,7 @@ Toniva Public API üzerinden çağrı raporu alır, departman kurallarına göre
 | `TONIVA_API_URL` | Hayır | `https://crm.toniva.net/api/public/v1` | Public API base |
 | `TIMEZONE` | Hayır | `Europe/Istanbul` | Saat dilimi |
 | `REPORT_INTERVAL_MINUTES` | Hayır | `60` | Saat başı rapor |
-| `SCHEDULER_START_TIME` | Hayır | `11:00` | Otomatik rapor başlangıç |
+| `SCHEDULER_START_TIME` | Hayır | `10:00` | Otomatik rapor başlangıç |
 | `SCHEDULER_END_TIME` | Hayır | `19:00` | Otomatik rapor bitiş (dahil) |
 | `DEPARTMENT_REPORT_DELAY_SECONDS` | Hayır | `30` | Departmanlar arası bekleme |
 | `REQUEST_TIMEOUT_SECONDS` | Hayır | `90` | Toniva HTTP timeout |
@@ -44,7 +44,7 @@ DATABASE_PATH=/data/bot.sqlite3
 TONIVA_API_URL=https://crm.toniva.net/api/public/v1
 TIMEZONE=Europe/Istanbul
 REPORT_INTERVAL_MINUTES=60
-SCHEDULER_START_TIME=11:00
+SCHEDULER_START_TIME=10:00
 SCHEDULER_END_TIME=19:00
 DEPARTMENT_REPORT_DELAY_SECONDS=30
 REQUEST_TIMEOUT_SECONDS=90
@@ -97,10 +97,10 @@ Aynı grupta 2 departman: iki kez `/departmantanimla`, personeli **doğru depart
 - Kaynak: `GET /reports/conversations` (+ performance süreleri)
 - Personel listesi varsa yalnızca o kişiler (paylaşılan API ayrımı)
 - Ring-only aramalar da aktivite sayılır (olumlu politika)
-- **Saatlik (11:00–19:00):** her **aktif ve izinli olmayan** departman grubuna **tam rapor** (ihlal varsa listeler, yoksa “ihlal yok”; personel çağrı adedi + konuşma süresi)
+- **Saatlik (10:00–19:00):** her **aktif ve izinli olmayan** departman grubuna **her saat başı rapor** gider (ihlal varsa/yoksa). Listede yalnızca o gün **henüz bildirilmemiş** ihlaller yer alır: aynı personel + aynı ihlal tipi (ör. çağrı aralığı) tekrarlanmaz; farklı tip (ör. mesai başlangıcı) sonraki saatte gider. Personel çağrı adedi + konuşma süresi her raporda vardır.
 - **Haftalık departman izni:** o gün o departman için kontrol yapılmaz, gruba ileti **gönderilmez** (sessiz atlanır). Aynı grupta 2 departman varsa yalnızca izin girilen departman atlanır.
 - `/haftalikizin`: önce **departman adı**, sonra gün (aynı grupta 2 departman ayrımı)
-- `/rapor`: aynı içerik, manuel (izin günü kısa bilgi: kontrol yok)
+- `/rapor`: o ana kadarki **tüm** ihlaller (daha önce bildirilmiş olanlar dahil); izin günü sessiz
 - Departmanlar sırayla işlenir (~30 sn ara, paralel değil)
 
 ## Lokal çalıştırma

@@ -33,11 +33,12 @@ async def run_scheduler(application: Application) -> None:
 
 
 async def send_scheduled_reports(application: Application) -> None:
-    """Saatlik rapor: yalnizca henuz bildirilmemis (yeni) ihlalleri gonderir.
+    """Saatlik rapor: her saat basi gruba tam rapor gonderir (ihlal var/yok).
 
-    Ayni gun onceki saatlikte giden ihlal tekrarlanmaz; kayit notified_violations tablosunda.
-    Yeni ihlal yoksa gruba mesaj yok (API 0 kayit / islenemeyen veri / eksik cekim uyarilari haric).
-    Tum ihlaller icin /rapor kullanilir.
+    Ihlal listesinde yalnizca henuz bildirilmemis (yeni) ihlaller yer alir:
+    ayni personel+ihlal tipi ayni gun tekrarlanmaz; farkli tip gider.
+    Kayit notified_violations tablosunda. Tum ihlaller icin /rapor kullanilir.
+    Haftalik izinli departman sessiz atlanir.
     Departmanlar sirayla islenir; arada DEPARTMENT_REPORT_DELAY_SECONDS beklenir.
     """
     config: Config = application.bot_data["config"]
@@ -60,7 +61,7 @@ async def send_scheduled_reports(application: Application) -> None:
     departments = database.list_departments(only_active=True)
     delay = config.department_report_delay_seconds
     logger.info(
-        "Saatlik yeni-ihlal raporu basliyor: %s departman, delay=%ss",
+        "Saatlik rapor basliyor: %s departman, delay=%ss",
         len(departments),
         delay,
     )
@@ -85,7 +86,7 @@ async def send_scheduled_reports(application: Application) -> None:
                 logger.info("Kurallar tanimli degil, atlandi: %s", department.name)
                 continue
 
-            # suppress_notified=True -> yalnizca yeni ihlaller (once bildirilmis tekrarlanmaz)
+            # suppress_notified=True -> rapor her zaman; listede yalnizca yeni ihlal tipleri
             report = await generate_department_report_payload(
                 database,
                 client,
@@ -96,8 +97,9 @@ async def send_scheduled_reports(application: Application) -> None:
                 use_cache=True,
             )
             if not report.should_send:
+                # Haftalik izin vb. bilinçli atlama
                 logger.info(
-                    "Rapor gonderilmedi (yeni ihlal yok veya atlandi): %s",
+                    "Rapor gonderilmedi (atlandi): %s",
                     department.name,
                 )
                 if index < len(departments) - 1 and delay > 0:

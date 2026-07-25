@@ -107,7 +107,7 @@ Gruptaki herkes yetkilidir.
 📊 Rapor
 /rapor [departman] — o ana kadarki TÜM ihlaller
 /kontroltoniva [departman]
-(Saatlik otomatik rapor yalnızca yeni ihlalleri iletir; tekrar etmez)
+(Saatlik 10:00–19:00 her saat başı rapor gider; aynı personel+ihlal tipi gün içinde tekrarlanmaz)
 
 ℹ️ /chat_id /kimim /iptal /help
 

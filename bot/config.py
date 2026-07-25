@@ -65,7 +65,7 @@ def load_config() -> Config:
         database_path=database_path,
         report_interval_minutes=max(1, int(os.getenv("REPORT_INTERVAL_MINUTES", "60"))),
         request_timeout_seconds=max(1, int(os.getenv("REQUEST_TIMEOUT_SECONDS", "60"))),
-        scheduler_start_time=parse_hhmm(os.getenv("SCHEDULER_START_TIME", "11:00")),
+        scheduler_start_time=parse_hhmm(os.getenv("SCHEDULER_START_TIME", "10:00")),
         scheduler_end_time=parse_hhmm(os.getenv("SCHEDULER_END_TIME", "19:00")),
         department_report_delay_seconds=max(
             0, int(os.getenv("DEPARTMENT_REPORT_DELAY_SECONDS", "30"))

@@ -55,17 +55,17 @@ def test_manual_report_mode_always_should_send():
     ) is True
 
 
-def test_hourly_mode_only_sends_on_new_or_alarm():
-    """suppress_notified=True (saatlik): yeni ihlal yoksa sessiz; alarm durumlari gonder."""
+def test_hourly_mode_always_sends():
+    """suppress_notified=True (saatlik): ihlal olsun/olmasın her zaman gönder."""
     from bot.service import _should_send_report
 
-    # Once bildirilmis ihlaller var, yeni yok -> gonderme
+    # Yeni ihlal yok -> yine gonder (ozet + personel adetleri)
     assert _should_send_report(
         suppress_notified=True,
         notification_violations=(),
         raw_call_count=10,
         processed_call_count=10,
-    ) is False
+    ) is True
     # Yeni ihlal var
     assert _should_send_report(
         suppress_notified=True,
@@ -73,7 +73,7 @@ def test_hourly_mode_only_sends_on_new_or_alarm():
         raw_call_count=10,
         processed_call_count=10,
     ) is True
-    # API 0 kayit alarmi
+    # API 0 kayit
     assert _should_send_report(
         suppress_notified=True,
         notification_violations=(),

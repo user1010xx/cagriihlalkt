@@ -94,7 +94,8 @@ async def generate_department_report_payload(
             client, department.api_key, report_date, evaluations, personnel, use_cache=use_cache
         )
 
-    # suppress_notified=True: saatlik — yalnizca henuz bildirilmemis ihlaller.
+    # suppress_notified=True: saatlik — rapor HER ZAMAN gider; listede yalnizca
+    # henuz bildirilmemis ihlaller (ayni personel+tip tekrarlanmaz, farkli tip gider).
     # suppress_notified=False: /rapor — o ana kadarki TUM ihlaller.
     notified_violations = (
         database.list_notified_violations(department.id, report_date.isoformat()) if suppress_notified else set()
@@ -115,6 +116,7 @@ async def generate_department_report_payload(
         new_violations_only=suppress_notified,
     )
     extra_messages = _build_extra_messages(meta, len(raw_calls))
+    # Saatlik ve /rapor: her zaman gonder (haftalik izin yukarida should_send=False ile cikar).
     should_send = _should_send_report(
         suppress_notified=suppress_notified,
         notification_violations=notification_violations,
@@ -184,20 +186,14 @@ def _should_send_report(
     processed_call_count: int,
     has_extra: bool = False,
 ) -> bool:
-    # /rapor: her zaman gonder (tum ihlaller)
-    if not suppress_notified:
-        return True
-    # Saatlik: yalnizca yeni ihlal varsa gonder; yoksa sessiz.
-    # Alarm/uyari durumlari (0 kayit, islenemeyen veri, ciddi eksik cekim) yine gonderilir.
-    if notification_violations:
-        return True
-    if raw_call_count == 0:
-        return True
-    if raw_call_count > 0 and processed_call_count == 0:
-        return True
-    if has_extra:
-        return True
-    return False
+    """Saatlik ve /rapor: her zaman True.
+
+    Saatlikte ihlal listesi once bildirilmis tiplerden arindirilir; mesaj yine gider
+    (ihlal yoksa 'yeni ihlal yok' ozeti + personel cagri adetleri).
+    Haftalik izin bu fonksiyona ulasmadan should_send=False doner.
+    """
+    _ = (suppress_notified, notification_violations, raw_call_count, processed_call_count, has_extra)
+    return True
 
 
 def _build_extra_messages(meta: dict, fetched_count: int) -> tuple[str, ...]:

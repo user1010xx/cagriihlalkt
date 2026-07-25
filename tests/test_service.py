@@ -146,7 +146,7 @@ async def test_weekly_leave_skips_control_and_does_not_send(tmp_path):
 
 @pytest.mark.asyncio
 async def test_hourly_suppresses_already_notified_violation(tmp_path):
-    """Saatlik (suppress_notified=True): once bildirilen ihlal tekrarlanmaz."""
+    """Saatlik: rapor her zaman gider; once bildirilen ihlal tipi listede tekrarlanmaz."""
     clear_api_call_cache()
     db = Database(str(tmp_path / "notif.sqlite3"))
     d = db.add_department("Dept", "-100", "tva_key")
@@ -191,12 +191,16 @@ async def test_hourly_suppresses_already_notified_violation(tmp_path):
         d.id, date(2026, 7, 18).isoformat(), first.notification_violations
     )
 
-    # Ayni kontrol aninda ikinci saatlik: once bildirilen tekrarlanmaz, mesaj yok
+    # Ikinci saatlik: rapor yine gider; ayni ihlal tipi listede yok
     second = await generate_department_report_payload(
         db, client, d.id, date(2026, 7, 18), now, suppress_notified=True
     )
-    assert second.should_send is False
+    assert second.should_send is True
     assert second.notification_violations == ()
+    assert "yeni ihlal yok" in second.message.casefold() or "0 yeni ihlal" in second.message.casefold()
+    # Onceki cagri-arasi ihlal metni listede tekrarlanmaz
+    assert "çağrı arası bekleme" not in second.message.casefold()
+    assert "cagri arasi bekleme" not in second.message.casefold()
 
     # /rapor: tum ihlaller yine gorunur
     full = await generate_department_report_payload(

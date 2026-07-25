@@ -8,7 +8,7 @@
 - Private chat: yanıt yok
 - `ALLOWED_GROUP_NAMES` dışındaki gruplar: yetkisiz
 - Gruba üye herkes tüm komutları kullanabilir
-- Saat başı: tüm aktif departmanlar sırayla kontrol → ilgili gruba mesaj
+- 10:00–19:00 saat başı: tüm aktif departmanlar sırayla kontrol → her gruba rapor (ihlal var/yok); aynı personel+ihlal tipi gün içinde tekrarlanmaz
 
 ## Modül sırası
 
