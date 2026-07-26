@@ -62,11 +62,14 @@ def build_department_report(
             ]
         )
     leave_count = sum(1 for evaluation in evaluations if evaluation.is_on_leave)
-    leave_summary = f" | 🟨 {leave_count} izinli personel" if leave_count else ""
+    meeting_count = sum(1 for evaluation in evaluations if evaluation.is_in_meeting)
+    leave_summary = f" | 🟨 {leave_count} izinli" if leave_count else ""
+    meeting_summary = f" | 🟦 {meeting_count} toplantıda" if meeting_count else ""
+    status_suffix = f"{leave_summary}{meeting_summary}"
     if new_violations_only:
-        lines.append(f"Özet: {'❌' if violation_count else '✅'} {violation_count} yeni ihlal{leave_summary}")
+        lines.append(f"Özet: {'❌' if violation_count else '✅'} {violation_count} yeni ihlal{status_suffix}")
     else:
-        lines.append(f"Özet: {'❌' if violation_count else '✅'} {violation_count} ihlal{leave_summary}")
+        lines.append(f"Özet: {'❌' if violation_count else '✅'} {violation_count} ihlal{status_suffix}")
     lines.append("")
 
     if violation_count:
@@ -81,6 +84,7 @@ def build_department_report(
         lines.append("")
 
     _append_leave_people(lines, evaluations)
+    _append_meeting_people(lines, evaluations)
 
     if new_violations_only and not violation_count:
         lines.append("✅ Yeni ihlal yok. Önceden bildirilen ihlaller tekrar gönderilmedi.")
@@ -118,6 +122,34 @@ def _append_leave_people(lines: list[str], evaluations: list[PersonnelEvaluation
     for evaluation in leave_people:
         extension_text = f" ({evaluation.extension})" if evaluation.extension else ""
         lines.append(f"   • {evaluation.name}{extension_text}")
+
+
+def _append_meeting_people(lines: list[str], evaluations: list[PersonnelEvaluation]) -> None:
+    """Telegram düz metinde renk yok; mavi kare ile izin (sarı) ayrımı."""
+    meeting_people = [evaluation for evaluation in evaluations if evaluation.is_in_meeting]
+    if not meeting_people:
+        return
+    if lines and lines[-1]:
+        lines.append("")
+    lines.append("🟦 Toplantıdaki Personeller")
+    for evaluation in meeting_people:
+        extension_text = f" ({evaluation.extension})" if evaluation.extension else ""
+        start_text = _active_period_start_text(evaluation.meeting_periods)
+        suffix = f" — başlangıç {start_text}" if start_text else ""
+        lines.append(f"   • {evaluation.name}{extension_text}{suffix}")
+
+
+def _active_period_start_text(periods: list) -> str | None:
+    """Açık (end=None) veya en son baslayan araligin baslangic saati."""
+    if not periods:
+        return None
+    open_periods = [period for period in periods if period[1] is None]
+    chosen = open_periods[-1] if open_periods else periods[-1]
+    start_at = chosen[0]
+    try:
+        return start_at.strftime("%H:%M:%S")
+    except Exception:
+        return None
 
 
 def _rules_summary(rules: DepartmentRules) -> str:

@@ -116,9 +116,11 @@ class PersonnelEvaluation:
     calls: list[CallRecord] = field(default_factory=list)
     violations: list[str] = field(default_factory=list)
     leave_periods: list[tuple[datetime, datetime | None]] = field(default_factory=list)
+    meeting_periods: list[tuple[datetime, datetime | None]] = field(default_factory=list)
     total_call_count: int | None = None
     total_call_duration_seconds: int | None = None
     is_on_leave: bool = False
+    is_in_meeting: bool = False
 
 
 def normalize_calls(raw_calls: list[dict[str, object]], timezone: ZoneInfo) -> list[CallRecord]:
@@ -163,8 +165,13 @@ def evaluate_department(
     now: datetime,
     timezone: ZoneInfo,
     leave_periods: dict[str, list[tuple[datetime, datetime | None]]] | None = None,
+    meeting_periods: dict[str, list[tuple[datetime, datetime | None]]] | None = None,
 ) -> list[PersonnelEvaluation]:
-    """Personel listesi varsa yalnizca o liste degerlendirilir (paylasilan API ayrimi)."""
+    """Personel listesi varsa yalnizca o liste degerlendirilir (paylasilan API ayrimi).
+
+    Izin veya acik toplanti sirasinda ihlal kontrolu yapilmaz. Toplanti/izin araliklari
+    cagri arasi bekleme hesabindan dusulur (iptal sonrasi gap kurali uygulanir).
+    """
     grouped = _group_calls(calls, personnel)
     evaluations: list[PersonnelEvaluation] = []
     if personnel:
@@ -185,28 +192,49 @@ def evaluate_department(
         total_call_count = len(person_calls)
         total_call_duration_seconds = sum(_report_duration_seconds(call) for call in person_calls)
         person_leave_periods = _leave_periods_for_person(person, leave_periods or {})
+        person_meeting_periods = _leave_periods_for_person(person, meeting_periods or {})
         is_on_leave = _is_on_leave_at(now, person_leave_periods)
+        is_in_meeting = _is_on_leave_at(now, person_meeting_periods)
         if is_on_leave:
             evaluations.append(
                 PersonnelEvaluation(
                     name=person.name,
                     extension=person.extension,
                     leave_periods=person_leave_periods,
+                    meeting_periods=person_meeting_periods,
                     total_call_count=total_call_count,
                     total_call_duration_seconds=total_call_duration_seconds,
                     is_on_leave=True,
+                    is_in_meeting=is_in_meeting,
                 )
             )
             continue
-        person_calls = _filter_calls_by_leave(person_calls, person_leave_periods)
+        if is_in_meeting:
+            evaluations.append(
+                PersonnelEvaluation(
+                    name=person.name,
+                    extension=person.extension,
+                    leave_periods=person_leave_periods,
+                    meeting_periods=person_meeting_periods,
+                    total_call_count=total_call_count,
+                    total_call_duration_seconds=total_call_duration_seconds,
+                    is_on_leave=False,
+                    is_in_meeting=True,
+                )
+            )
+            continue
+        exempt_periods = person_leave_periods + person_meeting_periods
+        person_calls = _filter_calls_by_leave(person_calls, exempt_periods)
         evaluation = PersonnelEvaluation(
             name=person.name,
             extension=person.extension,
             calls=person_calls,
             leave_periods=person_leave_periods,
+            meeting_periods=person_meeting_periods,
             total_call_count=total_call_count,
             total_call_duration_seconds=total_call_duration_seconds,
             is_on_leave=False,
+            is_in_meeting=False,
         )
         _check_work_start(evaluation, rules, report_date, now, timezone)
         _check_call_gaps(evaluation, rules, report_date, timezone)
@@ -296,6 +324,13 @@ def _is_on_leave_at(value: datetime, leave_periods: list[tuple[datetime, datetim
     return _datetime_in_leave(value, leave_periods)
 
 
+def _exempt_periods(
+    evaluation: PersonnelEvaluation,
+) -> list[tuple[datetime, datetime | None]]:
+    """Izin + toplanti araliklari (gap / kural muafiyeti)."""
+    return list(evaluation.leave_periods) + list(evaluation.meeting_periods)
+
+
 def _check_work_start(
     evaluation: PersonnelEvaluation,
     rules: DepartmentRules,
@@ -308,7 +343,7 @@ def _check_work_start(
     work_start = datetime.combine(report_date, rules.work_start_time, tzinfo=timezone)
     if now < work_start:
         return
-    if _datetime_in_leave(work_start, evaluation.leave_periods):
+    if _datetime_in_leave(work_start, _exempt_periods(evaluation)):
         return
     if not evaluation.calls:
         evaluation.violations.append(
@@ -352,7 +387,7 @@ def _check_call_gaps(
             continue
         idle_seconds = (idle_end - idle_start).total_seconds()
         idle_seconds -= _ignored_gap_seconds(idle_start, idle_end, rules, report_date, timezone, previous)
-        idle_seconds -= _leave_overlap_seconds(idle_start, idle_end, evaluation.leave_periods)
+        idle_seconds -= _leave_overlap_seconds(idle_start, idle_end, _exempt_periods(evaluation))
         idle_minutes = int(idle_seconds // 60)
         if idle_minutes > rules.max_call_gap_minutes:
             evaluation.violations.append(
@@ -398,7 +433,7 @@ def _check_current_idle_gap(
         return
     idle_seconds = (idle_end - idle_start).total_seconds()
     idle_seconds -= _ignored_gap_seconds(idle_start, idle_end, rules, report_date, timezone, last_call)
-    idle_seconds -= _leave_overlap_seconds(idle_start, idle_end, evaluation.leave_periods)
+    idle_seconds -= _leave_overlap_seconds(idle_start, idle_end, _exempt_periods(evaluation))
     idle_minutes = int(idle_seconds // 60)
     if idle_minutes > rules.max_call_gap_minutes:
         evaluation.violations.append(
@@ -419,7 +454,7 @@ def _check_pre_break_leave(
     leave_time = datetime.combine(report_date, rules.pre_break_leave_time, tzinfo=timezone)
     if now < leave_time:
         return
-    if _datetime_in_leave(leave_time, evaluation.leave_periods):
+    if _datetime_in_leave(leave_time, _exempt_periods(evaluation)):
         return
     latest_allowed_window = (
         datetime.combine(report_date, rules.break_start_time, tzinfo=timezone)
@@ -450,7 +485,7 @@ def _check_post_break_start(
     start_limit = datetime.combine(report_date, rules.post_break_start_time, tzinfo=timezone)
     if now < start_limit:
         return
-    if _datetime_in_leave(start_limit, evaluation.leave_periods):
+    if _datetime_in_leave(start_limit, _exempt_periods(evaluation)):
         return
     break_end = (
         datetime.combine(report_date, rules.break_end_time, tzinfo=timezone)
@@ -486,7 +521,7 @@ def _check_work_end(
     work_end = datetime.combine(report_date, rules.work_end_time, tzinfo=timezone)
     if now < work_end:
         return
-    if _datetime_in_leave(work_end, evaluation.leave_periods):
+    if _datetime_in_leave(work_end, _exempt_periods(evaluation)):
         return
     has_call_at_or_after_end = any(
         call.started_at >= work_end or call.ended_at >= work_end for call in evaluation.calls

@@ -87,6 +87,7 @@ Aynı grupta 2 departman: iki kez `/departmantanimla`, personeli **doğru depart
 /kuralayarla /kurallistele
 /personelekle /personeltopluekle /personel_listele /personel_sil /personel_aktif /personel_pasif
 /izin /iziniptal /izinlistele
+/toplantial /toplantiiptal
 /haftalikizin /haftalikizinduzenle /haftalikiziniptal
 /sorumluekle /sorumlusil /sorumlulistele
 /rapor /kontroltoniva /iptal
@@ -98,6 +99,7 @@ Aynı grupta 2 departman: iki kez `/departmantanimla`, personeli **doğru depart
 - Personel listesi varsa yalnızca o kişiler (paylaşılan API ayrımı)
 - Ring-only aramalar da aktivite sayılır (olumlu politika)
 - **Saatlik (10:00–19:00):** her **aktif ve izinli olmayan** departman grubuna **her saat başı rapor** gider (ihlal varsa/yoksa). Listede yalnızca o gün **henüz bildirilmemiş** ihlaller yer alır: aynı personel + aynı ihlal tipi (ör. çağrı aralığı) tekrarlanmaz; farklı tip (ör. mesai başlangıcı) sonraki saatte gider. Personel çağrı adedi + konuşma süresi her raporda vardır.
+- **Personel toplantı:** `/toplantial` ile alınan personel toplantı süresince kontrol edilmez (ihlal yok). `/toplantiiptal` sonrası çağrı aralığı kuralı yeniden uygulanır; toplantı aralığı gap hesabından düşülür. Saatlik ve `/rapor` çıktısında 🟦 ile listelenir.
 - **Haftalık departman izni:** o gün o departman için kontrol yapılmaz, gruba ileti **gönderilmez** (sessiz atlanır). Aynı grupta 2 departman varsa yalnızca izin girilen departman atlanır.
 - `/haftalikizin`: önce **departman adı**, sonra gün (aynı grupta 2 departman ayrımı)
 - `/rapor`: o ana kadarki **tüm** ihlaller (daha önce bildirilmiş olanlar dahil); izin günü sessiz

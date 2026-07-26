@@ -149,3 +149,50 @@ def test_leave_skips_person():
     evaluations = evaluate_department(calls, [_person("Ali")], _rules(), DAY, now, TZ, leave_periods=leave)
     assert evaluations[0].is_on_leave
     assert evaluations[0].violations == []
+
+
+def test_meeting_skips_person_no_violations():
+    """Açık toplantıda personel kontrol edilmez."""
+    raw = [{"agentName": "Ahmet", "startedAt": "2026-07-18T09:05:00", "duration": 60}]
+    calls = normalize_calls(raw, TZ)
+    now = datetime(2026, 7, 18, 12, 0, tzinfo=TZ)
+    meetings = {
+        "ahmet": [(datetime(2026, 7, 18, 10, 0, tzinfo=TZ), None)],
+    }
+    evaluations = evaluate_department(
+        calls, [_person("Ahmet", "10")], _rules(), DAY, now, TZ, meeting_periods=meetings
+    )
+    assert evaluations[0].is_in_meeting
+    assert not evaluations[0].is_on_leave
+    assert evaluations[0].violations == []
+
+
+def test_ended_meeting_excluded_from_gap():
+    """Toplantı bittikten sonra gap hesabında toplantı süresi düşülür."""
+    # 09:00 cagri, 09:05-11:00 toplanti, 11:05 cagri; max gap 15 dk
+    raw = [
+        {"agentName": "Ahmet", "startedAt": "2026-07-18T09:00:00", "duration": 60},
+        {"agentName": "Ahmet", "startedAt": "2026-07-18T11:05:00", "duration": 60},
+    ]
+    calls = normalize_calls(raw, TZ)
+    now = datetime(2026, 7, 18, 11, 10, tzinfo=TZ)
+    meetings = {
+        "ahmet": [
+            (
+                datetime(2026, 7, 18, 9, 5, tzinfo=TZ),
+                datetime(2026, 7, 18, 11, 0, tzinfo=TZ),
+            )
+        ],
+    }
+    evaluations = evaluate_department(
+        calls,
+        [_person("Ahmet", "10")],
+        _rules(max_call_gap_minutes=15),
+        DAY,
+        now,
+        TZ,
+        meeting_periods=meetings,
+    )
+    assert not evaluations[0].is_in_meeting
+    gap_violations = [v for v in evaluations[0].violations if "arası bekleme" in v.casefold() or "arasi bekleme" in v.casefold()]
+    assert gap_violations == []

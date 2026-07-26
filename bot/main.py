@@ -15,6 +15,8 @@ from bot.handlers import (
     DEPT_DELETE_ID,
     LEAVE_DEPT,
     LEAVE_PERS,
+    MEETING_DEPT,
+    MEETING_PERS,
     PERS_ADD_DEPT,
     PERS_ADD_EXT,
     PERS_ADD_NAME,
@@ -62,6 +64,10 @@ from bot.handlers import (
     iziniptal_start,
     izinlistele,
     kimim,
+    toplanti_dept,
+    toplanti_personnel,
+    toplantial_start,
+    toplantiiptal_start,
     kontroltoniva,
     kuralayarla_break_interval,
     kuralayarla_dept,
@@ -264,6 +270,19 @@ def build_application() -> Application:
         )
     )
     application.add_handler(CommandHandler("izinlistele", izinlistele))
+
+    application.add_handler(
+        _conv(
+            [
+                CommandHandler(["toplantial", "toplanti_al"], toplantial_start),
+                CommandHandler(["toplantiiptal", "toplanti_iptal"], toplantiiptal_start),
+            ],
+            {
+                MEETING_DEPT: [MessageHandler(text, toplanti_dept)],
+                MEETING_PERS: [MessageHandler(text, toplanti_personnel)],
+            },
+        )
+    )
 
     application.add_handler(
         _conv(

@@ -137,7 +137,23 @@ class Database:
                 "CREATE INDEX IF NOT EXISTS idx_notified_dept_date ON notified_violations (department_id, report_date)"
             )
             connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS personnel_meeting_periods (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    department_id INTEGER NOT NULL,
+                    personnel_name TEXT NOT NULL,
+                    start_at TEXT NOT NULL,
+                    end_at TEXT,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE CASCADE
+                )
+                """
+            )
+            connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_leave_periods_dept ON personnel_leave_periods (department_id, start_at)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_meeting_periods_dept ON personnel_meeting_periods (department_id, start_at)"
             )
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_personnel_dept ON personnel (department_id, is_active)"
@@ -452,6 +468,80 @@ class Database:
             rows = connection.execute(
                 """
                 SELECT * FROM personnel_leave_periods
+                WHERE department_id = ?
+                  AND datetime(start_at) <= datetime(?)
+                  AND end_at IS NULL
+                ORDER BY personnel_name, start_at
+                """,
+                (department_id, current_at),
+            ).fetchall()
+        return rows
+
+    def has_active_meeting(self, department_id: int, personnel_name: str, current_at: str) -> bool:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT 1 FROM personnel_meeting_periods
+                WHERE department_id = ?
+                  AND lower(personnel_name) = lower(?)
+                  AND datetime(start_at) <= datetime(?)
+                  AND end_at IS NULL
+                LIMIT 1
+                """,
+                (department_id, personnel_name.strip(), current_at),
+            ).fetchone()
+        return row is not None
+
+    def start_meeting(self, department_identifier: str | int, personnel_name: str, start_at: str) -> bool:
+        department = self.get_department(department_identifier)
+        if department is None:
+            return False
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO personnel_meeting_periods (department_id, personnel_name, start_at)
+                VALUES (?, ?, ?)
+                """,
+                (department.id, personnel_name.strip(), start_at),
+            )
+        return True
+
+    def end_meeting(self, department_identifier: str | int, personnel_name: str, end_at: str) -> bool:
+        department = self.get_department(department_identifier)
+        if department is None:
+            return False
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE personnel_meeting_periods
+                SET end_at = ?
+                WHERE department_id = ?
+                  AND lower(personnel_name) = lower(?)
+                  AND end_at IS NULL
+                """,
+                (end_at, department.id, personnel_name.strip()),
+            )
+        return cursor.rowcount > 0
+
+    def list_meeting_periods(self, department_id: int, report_date: str) -> list[sqlite3.Row]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM personnel_meeting_periods
+                WHERE department_id = ?
+                  AND date(start_at) <= date(?)
+                  AND (end_at IS NULL OR date(end_at) >= date(?))
+                ORDER BY start_at
+                """,
+                (department_id, report_date, report_date),
+            ).fetchall()
+        return rows
+
+    def list_active_meeting_periods(self, department_id: int, current_at: str) -> list[sqlite3.Row]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM personnel_meeting_periods
                 WHERE department_id = ?
                   AND datetime(start_at) <= datetime(?)
                   AND end_at IS NULL

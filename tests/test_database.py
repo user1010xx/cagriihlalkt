@@ -58,6 +58,22 @@ def test_rules_and_leave(tmp_path):
     assert not db.is_department_weekly_leave(d.id, 6, "2026-07-19")
 
 
+def test_meeting_start_and_end(tmp_path):
+    db = Database(str(tmp_path / "meeting.sqlite3"))
+    d = db.add_department("Op", "-1", "tva_x")
+    db.add_personnel(d.id, "Ahmet", "10")
+    assert db.start_meeting(d.id, "Ahmet", "2026-07-18T10:00:00+03:00")
+    assert db.has_active_meeting(d.id, "Ahmet", "2026-07-18T10:30:00+03:00")
+    rows = db.list_active_meeting_periods(d.id, "2026-07-18T10:30:00+03:00")
+    assert len(rows) == 1
+    assert rows[0]["personnel_name"] == "Ahmet"
+    assert db.end_meeting(d.id, "Ahmet", "2026-07-18T11:00:00+03:00")
+    assert not db.has_active_meeting(d.id, "Ahmet", "2026-07-18T11:05:00+03:00")
+    day_rows = db.list_meeting_periods(d.id, "2026-07-18")
+    assert len(day_rows) == 1
+    assert day_rows[0]["end_at"] is not None
+
+
 def test_upsert_personnel_updates_extension(tmp_path):
     db = Database(str(tmp_path / "t4.sqlite3"))
     d = db.add_department("Op", "-1", "tva")

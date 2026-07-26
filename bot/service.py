@@ -76,6 +76,7 @@ async def generate_department_report_payload(
     )
     calls = normalize_calls(raw_calls, now.tzinfo)  # type: ignore[arg-type]
     leave_periods = _load_leave_periods(database, department.id, report_date, now.tzinfo)
+    meeting_periods = _load_meeting_periods(database, department.id, report_date, now.tzinfo)
     responsibles = database.list_responsibles(department.id)
 
     if len(raw_calls) == 0:
@@ -89,6 +90,7 @@ async def generate_department_report_payload(
             now,
             now.tzinfo,  # type: ignore[arg-type]
             leave_periods=leave_periods,
+            meeting_periods=meeting_periods,
         )
         evaluations = await _with_performance_totals(
             client, department.api_key, report_date, evaluations, personnel, use_cache=use_cache
@@ -161,6 +163,7 @@ def _filter_notified_violations(
         next_evaluation = copy(evaluation)
         next_evaluation.calls = list(evaluation.calls)
         next_evaluation.leave_periods = list(evaluation.leave_periods)
+        next_evaluation.meeting_periods = list(evaluation.meeting_periods)
         next_evaluation.violations = [
             violation
             for violation in evaluation.violations
@@ -373,6 +376,18 @@ def _performance_duration_to_seconds(value: object | None) -> int:
 def _load_leave_periods(database: Database, department_id: int, report_date: date, timezone) -> dict[str, list[tuple[datetime, datetime | None]]]:
     periods: dict[str, list[tuple[datetime, datetime | None]]] = {}
     for row in database.list_leave_periods(department_id, report_date.isoformat()):
+        start_at = datetime.fromisoformat(str(row["start_at"])).astimezone(timezone)
+        end_value = row["end_at"]
+        end_at = datetime.fromisoformat(str(end_value)).astimezone(timezone) if end_value else None
+        periods.setdefault(str(row["personnel_name"]).casefold(), []).append((start_at, end_at))
+    return periods
+
+
+def _load_meeting_periods(
+    database: Database, department_id: int, report_date: date, timezone
+) -> dict[str, list[tuple[datetime, datetime | None]]]:
+    periods: dict[str, list[tuple[datetime, datetime | None]]] = {}
+    for row in database.list_meeting_periods(department_id, report_date.isoformat()):
         start_at = datetime.fromisoformat(str(row["start_at"])).astimezone(timezone)
         end_value = row["end_at"]
         end_at = datetime.fromisoformat(str(end_value)).astimezone(timezone) if end_value else None

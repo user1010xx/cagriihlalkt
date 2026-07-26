@@ -45,6 +45,8 @@ logger = logging.getLogger(__name__)
     LEAVE_CANCEL_DEPT,
     LEAVE_CANCEL_PERS,
     LEAVE_LIST_DEPT,
+    MEETING_DEPT,
+    MEETING_PERS,
     WEEKLY_DEPT,
     WEEKLY_DAY,
     WEEKLY_EDIT_ACTION,
@@ -55,7 +57,7 @@ logger = logging.getLogger(__name__)
     RESP_DEL_DEPT,
     RESP_DEL_USER,
     RESP_LIST_DEPT,
-) = range(36)
+) = range(38)
 
 WEEKDAY_MAP = {
     "pazartesi": 0,
@@ -100,6 +102,10 @@ Gruptaki herkes yetkilidir.
 /izin /iziniptal /izinlistele
 /haftalikizin /haftalikizinduzenle /haftalikiziniptal
   (önce departman adı — aynı grupta 2 departman ayrımı; izin günü o departmana rapor yok)
+
+🟦 Toplantı
+/toplantial — personeli toplantıya al (o andan itibaren çağrı kontrolü yok)
+/toplantiiptal — toplantıyı bitir (sonrasında çağrı aralığı kuralı uygulanır)
 
 👥 Sorumlu
 /sorumluekle /sorumlusil /sorumlulistele
@@ -849,6 +855,85 @@ async def izinlistele(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not any_leave:
         lines.append("(yok)")
     await update.effective_message.reply_text("\n".join(lines))
+
+
+# --- Toplanti ---
+
+
+@allowed_only
+async def toplantial_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    return await _meeting_start(update, context, "start")
+
+
+@allowed_only
+async def toplantiiptal_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    return await _meeting_start(update, context, "end")
+
+
+async def _meeting_start(update: Update, context: ContextTypes.DEFAULT_TYPE, mode: str) -> int:
+    context.user_data["meeting_mode"] = mode
+    depts = departments_in_chat(update, _db(context))
+    if not depts:
+        await update.effective_message.reply_text("Departman yok.")
+        return ConversationHandler.END
+    if len(depts) == 1:
+        context.user_data["meeting_dept"] = depts[0].name
+        await update.effective_message.reply_text("Personel adı:")
+        return MEETING_PERS
+    await update.effective_message.reply_text(
+        "Hangi departman?\n" + "\n".join(f"• {d.name}" for d in depts)
+    )
+    return MEETING_DEPT
+
+
+@allowed_only
+async def toplanti_dept(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    name = (update.effective_message.text or "").strip()
+    if resolve_department(update, _db(context), name) is None:
+        await update.effective_message.reply_text("Departman yok.")
+        return ConversationHandler.END
+    context.user_data["meeting_dept"] = name
+    await update.effective_message.reply_text("Personel adı:")
+    return MEETING_PERS
+
+
+@allowed_only
+async def toplanti_personnel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    dept_name = context.user_data.get("meeting_dept")
+    person_name = (update.effective_message.text or "").strip()
+    department = resolve_department(update, _db(context), dept_name)
+    if department is None:
+        await update.effective_message.reply_text("Departman yok.")
+        return ConversationHandler.END
+    person = _db(context).find_personnel_by_name(department.id, person_name)
+    if person is None:
+        await update.effective_message.reply_text("Kayıtlı personel adı zorunlu.")
+        return ConversationHandler.END
+    now_dt = _now(context)
+    now = now_dt.isoformat()
+    mode = context.user_data.get("meeting_mode")
+    if mode == "start":
+        if _db(context).has_active_meeting(department.id, person.name, now):
+            await update.effective_message.reply_text("Bu personel zaten toplantıda.")
+        else:
+            _db(context).start_meeting(department.id, person.name, now)
+            await update.effective_message.reply_text(
+                f"🟦 Toplantı başlatıldı: {person.name}\n"
+                f"Başlangıç: {now_dt.strftime('%H:%M:%S')}\n"
+                "Bu süre boyunca çağrı kontrolü yapılmaz."
+            )
+    else:
+        ok = _db(context).end_meeting(department.id, person.name, now)
+        if ok:
+            await update.effective_message.reply_text(
+                f"✅ Toplantı bitti: {person.name}\n"
+                f"Bitiş: {now_dt.strftime('%H:%M:%S')}\n"
+                "Artık çağrı aralığı kuralına göre kontrol edilir."
+            )
+        else:
+            await update.effective_message.reply_text("Açık toplantı bulunamadı.")
+    context.user_data.clear()
+    return ConversationHandler.END
 
 
 # --- Haftalik izin ---

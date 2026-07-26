@@ -212,6 +212,46 @@ async def test_hourly_suppresses_already_notified_violation(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_meeting_person_in_report_and_no_violations(tmp_path):
+    """Toplantıdaki personel raporda 🟦 ile görünür; ihlal üretilmez."""
+    clear_api_call_cache()
+    db = Database(str(tmp_path / "meeting_svc.sqlite3"))
+    d = db.add_department("Dept", "-100", "tva_key")
+    db.update_rules(
+        d.id,
+        work_start_time="09:00",
+        pre_break_leave_time=None,
+        break_start_time=None,
+        break_end_time=None,
+        post_break_start_time=None,
+        work_end_time="18:00",
+        max_call_gap_minutes=15,
+    )
+    db.add_personnel(d.id, "Ahmet", "10")
+    db.start_meeting(d.id, "Ahmet", "2026-07-18T10:00:00+03:00")
+    rows = [
+        {
+            "agentName": "Ahmet",
+            "extension": "10",
+            "startedAt": "2026-07-18T09:05:00",
+            "duration": 60,
+        }
+    ]
+    client = FakeClient(rows)
+    now = datetime(2026, 7, 18, 12, 0, tzinfo=TZ)
+
+    report = await generate_department_report_payload(
+        db, client, d.id, date(2026, 7, 18), now, suppress_notified=True
+    )
+    assert report.should_send is True
+    assert "🟦" in report.message
+    assert "Toplantıdaki" in report.message or "toplantıda" in report.message.casefold()
+    assert "Ahmet" in report.message
+    # Ihlal listesi olmamali (toplantida)
+    assert "❌ İhlaller" not in report.message
+
+
+@pytest.mark.asyncio
 async def test_weekly_leave_only_affects_that_department(tmp_path):
     """Aynı gruptaki iki departmandan yalnızca izinli olan atlanır."""
     clear_api_call_cache()
